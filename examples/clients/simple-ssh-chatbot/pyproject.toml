@@ -1,0 +1,49 @@
+[project]
+name = "mcp-simple-ssh-chatbot"
+version = "0.1.0"
+description = "A simple CLI chatbot using the Model Context Protocol (MCP) over SSH"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "MCP Contributors" }]
+keywords = ["mcp", "llm", "chatbot", "cli", "ssh"]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "mcp>=1.0.0",
+    "uvicorn>=0.32.1",
+    "asyncssh>=2.14.0"
+]
+
+[project.scripts]
+mcp-simple-ssh-chatbot = "mcp_simple_ssh_chatbot.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_simple_ssh_chatbot"]
+
+[tool.pyright]
+include = ["mcp_simple_ssh_chatbot"]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.uv]
+dev-dependencies = ["pyright>=1.1.379", "pytest>=8.3.3", "ruff>=0.6.9"]

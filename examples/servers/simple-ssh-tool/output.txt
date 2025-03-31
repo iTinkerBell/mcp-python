@@ -1,0 +1,4 @@
+Starting SSH server on 0.0.0.0:8022
+Ed25519 key pair generated and saved to: C:\Users\Work\.ssh\mcp_server_key
+['C:\\Users\\Work\\.ssh\\mcp_server_key']
+['C:\\Users\\Work\\.ssh\\authorized_keys']

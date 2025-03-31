@@ -1,6 +1,8 @@
 from .client.session import ClientSession
+from .client.ssh import SSHServerParameters, ssh_client
 from .client.stdio import StdioServerParameters, stdio_client
 from .server.session import ServerSession
+from .server.ssh import ssh_server
 from .server.stdio import stdio_server
 from .shared.exceptions import McpError
 from .types import (
@@ -101,12 +103,15 @@ __all__ = [
     "ServerResult",
     "ServerSession",
     "SetLevelRequest",
+    "SSHServerParameters",
     "StdioServerParameters",
     "StopReason",
     "SubscribeRequest",
     "Tool",
     "ToolsCapability",
     "UnsubscribeRequest",
+    "ssh_client",
+    "ssh_server",
     "stdio_client",
     "stdio_server",
     "CompleteRequest",

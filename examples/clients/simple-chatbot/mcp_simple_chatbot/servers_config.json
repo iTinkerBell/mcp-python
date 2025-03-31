@@ -7,6 +7,10 @@
     "puppeteer": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-puppeteer"]
+    },
+    "simple-chatbot": {
+      "command": "uv",
+      "args": ["run", "mcp-simple-tool"]
     }
   }
 }

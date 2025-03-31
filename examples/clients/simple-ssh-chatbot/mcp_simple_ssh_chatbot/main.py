@@ -8,8 +8,8 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession, SSHServerParameters
+from mcp.client.ssh import ssh_client
 
 # Configure logging
 logging.basicConfig(
@@ -68,33 +68,27 @@ class Server:
     def __init__(self, name: str, config: dict[str, Any]) -> None:
         self.name: str = name
         self.config: dict[str, Any] = config
-        self.stdio_context: Any | None = None
+        self.ssh_context: Any | None = None
         self.session: ClientSession | None = None
         self._cleanup_lock: asyncio.Lock = asyncio.Lock()
         self.exit_stack: AsyncExitStack = AsyncExitStack()
 
     async def initialize(self) -> None:
         """Initialize the server connection."""
-        command = (
-            shutil.which("npx")
-            if self.config["command"] == "npx"
-            else self.config["command"]
-        )
-        if command is None:
-            raise ValueError("The command must be a valid string and cannot be None.")
+        print(self.config)
 
-        server_params = StdioServerParameters(
-            command=command,
+        client_params = SSHServerParameters.from_args_and_env(
+            command=self.config["command"],
             args=self.config["args"],
             env={**os.environ, **self.config["env"]}
-            if self.config.get("env")
-            else None,
+            if self.config.get("env") else None,
         )
+
         try:
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
+            ssh_transport = await self.exit_stack.enter_async_context(
+                ssh_client(client_params)
             )
-            read, write = stdio_transport
+            read, write = ssh_transport
             session = await self.exit_stack.enter_async_context(
                 ClientSession(read, write)
             )
@@ -178,7 +172,7 @@ class Server:
             try:
                 await self.exit_stack.aclose()
                 self.session = None
-                self.stdio_context = None
+                self.ssh_context = None
             except Exception as e:
                 logging.error(f"Error during cleanup of server {self.name}: {e}")
 
