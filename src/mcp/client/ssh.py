@@ -196,12 +196,8 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
         )
         logger.info(f"SSH connection established to {params.host}:{params.port}")
 
-        # Open a direct session channel instead of creating a process
-        session = await conn.open_session()
-
-        # Optionally request a subsystem if your server has one configured
-        # For example, if your server has a json-rpc subsystem:
-        # await session.request_subsystem('json-rpc')
+        # Open a session using the open_session method which returns stdin, stdout, stderr
+        stdin, stdout, stderr = await conn.open_session()
 
         logger.info(f"SSH session established to {params.host}:{params.port}")
 
@@ -210,13 +206,14 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
             try:
                 async with read_stream_writer:
                     buffer = ""
-                    async for chunk in session.stdout:
+                    async for chunk in stdout:
                         lines = (buffer + chunk).split("\n")
                         buffer = lines.pop()
 
                         for line in lines:
                             try:
                                 message = types.JSONRPCMessage.model_validate_json(line)
+                                print(f"Received message: {message}")
                                 await read_stream_writer.send(message)
                             except Exception as exc:
                                 logger.error(f"Error parsing JSON-RPC: {exc}")
@@ -242,8 +239,9 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
                 async with write_stream_reader:
                     async for message in write_stream_reader:
                         json = message.model_dump_json(by_alias=True, exclude_none=True)
-                        session.stdin.write(json + "\n")
-                        await session.stdin.drain()
+                        print(f"Sending message: {json}")
+                        stdin.write(json + "\n")
+                        await stdin.drain()
             except anyio.ClosedResourceError:
                 await anyio.lowlevel.checkpoint()
             except Exception as e:
@@ -255,7 +253,7 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
             try:
                 yield read_stream, write_stream
             finally:
-                session.close()
+                stdin.close()
                 conn.close()
                 logger.info("SSH connection closed")
 

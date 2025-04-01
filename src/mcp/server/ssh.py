@@ -17,39 +17,19 @@ Example usage:
 ```
 """
 
-import logging
+import asyncio
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 from typing import Optional
 
 import anyio
 import asyncssh
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from pydantic_core import ValidationError
 
 import mcp.types as types
 
 logger = logging.getLogger(__name__)
-
-
-class McpSSHServer(asyncssh.SSHServer):
-    """
-    SSH server implementation for MCP connections.
-    """
-    def __init__(self):
-        self.conn = None
-
-    def connection_made(self, conn: asyncssh.SSHServerConnection):
-        """Called when a connection is established"""
-        self.conn = conn
-        logger.info(f"SSH connection established from {conn.get_extra_info('peername')[0]}")
-
-    def connection_lost(self, exc: Optional[BaseException]):
-        """Called when a connection is closed"""
-        if exc:
-            logger.error(f"SSH connection error: {str(exc)}")
-        logger.info("SSH connection closed")
-
 
 @asynccontextmanager
 async def ssh_server(host: str = '0.0.0.0',
@@ -101,7 +81,10 @@ async def ssh_server(host: str = '0.0.0.0',
     read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
     write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
 
-    class ConnectionHandler(asyncssh.SSHServer):
+    # Track active connections and channels
+    active_sessions = []
+
+    class SSHServerHandler(asyncssh.SSHServer):
         def connection_made(self, conn: asyncssh.SSHServerConnection):
             """Called when a connection is established"""
             logger.info(f"SSH connection established from {conn.get_extra_info('peername')[0]}")
@@ -116,21 +99,71 @@ async def ssh_server(host: str = '0.0.0.0',
             """Handle a new session request"""
             return SSHSessionHandler()
 
-    class SSHSessionHandler(asyncssh.SSHServerSession):
+    class SSHSessionHandler(asyncssh.SSHServerSession[str]):
         def __init__(self):
-            self._chan = None
+            self._chan: Optional[asyncssh.SSHServerChannel[str]] = None
+            self._input_buffer = ''
+            self._pending_lines = []
+            self._line_available = asyncio.Event()
+            active_sessions.append(self)
 
-        def connection_made(self, chan):
+        def connection_made(self, chan: asyncssh.SSHServerChannel[str]):
             """Called when a connection is made"""
             self._chan = chan
+            remote_addr = self._chan.get_extra_info('peername')[0]
+            logger.info(f"Connection made from {remote_addr}")
+
+        def shell_requested(self) -> bool:
+            """Handle shell requests"""
+            logger.info("Shell requested")
+            return True
 
         def session_started(self):
             """Called when the session starts"""
+            if self._chan is None:
+                logger.error("SSH channel is None during session start")
+                return
+
             remote_addr = self._chan.get_extra_info('peername')[0]
             logger.info(f"SSH session started from {remote_addr}")
 
             # Start processing the connection
-            anyio.create_task(process_connection(self._chan))
+            asyncio.create_task(self.process_session())
+
+        def data_received(self, data: str, datatype: asyncssh.DataType):
+            """Called when data is received on the channel"""
+            if self._chan is None:
+                logger.error("SSH channel is None during data reception")
+                return
+
+            # Add the received data to the input buffer
+            self._input_buffer += data
+
+            # Process any complete lines
+            lines = self._input_buffer.splitlines(keepends=True)
+            if lines:
+                # If the last line doesn't end with a newline, keep it in the buffer
+                if not lines[-1].endswith('\n'):
+                    self._input_buffer = lines.pop()
+                else:
+                    self._input_buffer = ''
+
+                # Add complete lines to the pending lines queue
+                for line in lines:
+                    self._pending_lines.append(line.rstrip('\n'))
+
+                # Signal that new lines are available
+                self._line_available.set()
+
+        async def readline(self):
+            """Read a line asynchronously from the input buffer"""
+            while not self._pending_lines:
+                # Wait for new data
+                self._line_available.clear()
+                await self._line_available.wait()
+
+            # Return the next available line
+            return self._pending_lines.pop(0)
 
         def connection_lost(self, exc):
             """Called when the connection is lost"""
@@ -138,49 +171,67 @@ async def ssh_server(host: str = '0.0.0.0',
                 logger.error(f"SSH session error: {exc}")
             logger.info("SSH session closed")
 
-    async def process_connection(chan):
-        """Handle a single SSH connection"""
-        remote_addr = chan.get_extra_info('peername')[0]
-        logger.info(f"Client connected: {remote_addr}")
+            # Remove from active sessions
+            if self in active_sessions:
+                active_sessions.remove(self)
 
-        async def ssh_reader():
-            """Read JSON-RPC messages from the SSH connection"""
+            # Signal the read loop to exit
+            self._line_available.set()
+
+        async def process_session(self):
+            """Process the SSH session"""
+            if self._chan is None:
+                logger.error("SSH channel is None during process_session")
+                return
+
+            remote_addr = self._chan.get_extra_info('peername')[0]
+            logger.info(f"Processing session from: {remote_addr}")
+
             try:
-                async with read_stream_writer:
-                    async for line in chan.stdin:
-                        line = line.rstrip('\n')
-                        try:
-                            message = types.JSONRPCMessage.model_validate_json(line)
-                        except ValidationError as exc:
-                            await read_stream_writer.send(exc)
-                            continue
+                async def ssh_reader():
+                    """Read JSON-RPC messages from the SSH connection"""
+                    try:
+                        while True:
+                            line = await self.readline()
+                            if not line:
+                                continue
 
-                        await read_stream_writer.send(message)
-            except anyio.ClosedResourceError:
-                logger.debug("SSH reader stream closed")
+                            try:
+                                message = types.JSONRPCMessage.model_validate_json(line)
+                                print(f"Received message: {message}")
+                                await read_stream_writer.send(message)
+                            except Exception as exc:
+                                logger.error(f"Error parsing message: {exc}")
+                                await read_stream_writer.send(exc)
+                    except asyncio.CancelledError:
+                        logger.debug("SSH reader task cancelled")
+                    except Exception as e:
+                        logger.error(f"Error in SSH reader: {str(e)}")
+                        await read_stream_writer.send(Exception(f"SSH transport error: {str(e)}"))
+
+                async def ssh_writer():
+                    """Write JSON-RPC messages to the SSH connection"""
+                    try:
+                        async for message in write_stream_reader:
+                            json = message.model_dump_json(by_alias=True, exclude_none=True)
+                            print(f"Sending message: {json}")
+                            self._chan.write(json + '\n')
+                            # await self._chan.drain()
+                    except asyncio.CancelledError:
+                        logger.debug("SSH writer task cancelled")
+                    except Exception as e:
+                        logger.error(f"Error in SSH writer: {str(e)}")
+
+                # Create tasks for reading and writing
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(ssh_reader)
+                    tg.start_soon(ssh_writer)
+
+                    # Wait for channel closure
+                    await self._chan.wait_closed()
+
             except Exception as e:
-                logger.error(f"Error in SSH reader: {str(e)}")
-                await read_stream_writer.send(Exception(f"SSH transport error: {str(e)}"))
-
-        async def ssh_writer():
-            """Write JSON-RPC messages to the SSH connection"""
-            try:
-                async with write_stream_reader:
-                    async for message in write_stream_reader:
-                        json = message.model_dump_json(by_alias=True, exclude_none=True)
-                        chan.stdout.write(json + '\n')
-                        await chan.stdout.drain()
-            except anyio.ClosedResourceError:
-                logger.debug("SSH writer stream closed")
-            except Exception as e:
-                logger.error(f"Error in SSH writer: {str(e)}")
-
-        async with anyio.create_task_group() as tg:
-            tg.start_soon(ssh_reader)
-            tg.start_soon(ssh_writer)
-
-            # Wait for channel closure
-            await chan.wait_closed()
+                logger.error(f"Session processing error: {e}")
 
     shutdown_event = anyio.Event()
 
@@ -188,7 +239,7 @@ async def ssh_server(host: str = '0.0.0.0',
         """Handle incoming connections continuously"""
         try:
             server = await asyncssh.create_server(
-                ConnectionHandler,
+                SSHServerHandler,
                 host,
                 port,
                 server_host_keys=server_host_keys,
@@ -212,6 +263,11 @@ async def ssh_server(host: str = '0.0.0.0',
         finally:
             # Signal shutdown
             shutdown_event.set()
+
+            # Clean up active sessions
+            for session in active_sessions[:]:
+                if session._chan:
+                    session._chan.close()
 
             # Cancel the server task group
             server_tg.cancel_scope.cancel()
