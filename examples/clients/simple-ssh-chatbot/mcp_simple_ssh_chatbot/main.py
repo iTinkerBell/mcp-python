@@ -85,14 +85,18 @@ class Server:
         )
 
         try:
+            print('Creating SSH transport...')
             ssh_transport = await self.exit_stack.enter_async_context(
                 ssh_client(client_params)
             )
             read, write = ssh_transport
+            print('SSH transport created.')
             session = await self.exit_stack.enter_async_context(
                 ClientSession(read, write)
             )
+            print('Client session created.')
             await session.initialize()
+            print('Client session initialized.')
             self.session = session
         except Exception as e:
             logging.error(f"Error initializing server {self.name}: {e}")
