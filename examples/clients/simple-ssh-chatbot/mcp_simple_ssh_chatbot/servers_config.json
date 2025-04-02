@@ -2,7 +2,7 @@
   "mcpServers": {
     "remote-m2m-tool": {
       "command": "uv",
-      "args": ["run", "mcp-simple-ssh-tool", "--transport", "ssh", "--host", "localhost", "--port", "8022", "--username", "mcp", "--client-keys", "~/.ssh/mcp_client_key", "--known_hosts", "~/.ssh/known_hosts"]
+      "args": ["run", "mcp-simple-ssh-tool", "--transport", "ssh", "--host", "43.199.74.26", "--port", "8022", "--username", "mcp", "--client-keys", "~/.ssh/mcp_client_key", "--known_hosts", "~/.ssh/mcp_remote_server"]
     }
   }
 }

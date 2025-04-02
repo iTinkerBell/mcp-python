@@ -166,7 +166,7 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
     Yields:
         A tuple of (read_stream, write_stream) for message exchange with the server
     """
-    print(params)
+    logger.info(params)
     read_stream: MemoryObjectReceiveStream[types.JSONRPCMessage | Exception]
     read_stream_writer: MemoryObjectSendStream[types.JSONRPCMessage | Exception]
 
@@ -213,7 +213,7 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
                         for line in lines:
                             try:
                                 message = types.JSONRPCMessage.model_validate_json(line)
-                                print(f"Received message: {message}")
+                                logger.info(f"Received message: {message}")
                                 await read_stream_writer.send(message)
                             except Exception as exc:
                                 logger.error(f"Error parsing JSON-RPC: {exc}")
@@ -239,7 +239,7 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
                 async with write_stream_reader:
                     async for message in write_stream_reader:
                         json = message.model_dump_json(by_alias=True, exclude_none=True)
-                        print(f"Sending message: {json}")
+                        logger.info(f"Sending message: {json}")
                         stdin.write(json + "\n")
                         await stdin.drain()
             except anyio.ClosedResourceError:
@@ -258,5 +258,5 @@ async def ssh_client(params: SSHServerParameters, errlog: TextIO = sys.stderr):
                 logger.info("SSH connection closed")
 
     except Exception as e:
-        print(f"SSH connection error: {str(e)}", file=errlog)
+        logger.error(f"SSH connection error: {str(e)}")
         raise

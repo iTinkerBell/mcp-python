@@ -241,7 +241,7 @@ class LLMClient:
         }
         payload = {
             "messages": messages,
-            "model": "deepseek/deepseek-r1:free",
+            "model": "deepseek/deepseek-chat-v3-0324:free",
             "temperature": 0.7,
             "max_tokens": 4096,
             "top_p": 1,
@@ -256,7 +256,7 @@ class LLMClient:
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
 
-        except httpx.RequestError as e:
+        except Exception as e:
             error_message = f"Error getting LLM response: {str(e)}"
             logging.error(error_message)
 
@@ -302,6 +302,10 @@ class ChatSession:
         import json
 
         try:
+            if llm_response.startswith("```json"):
+                llm_response = llm_response.replace("```json", "").replace("```", "").strip()
+            elif llm_response.startswith("```"):
+                llm_response = llm_response.replace("```", "").strip()
             tool_call = json.loads(llm_response)
             if "tool" in tool_call and "arguments" in tool_call:
                 logging.info(f"Executing tool: {tool_call['tool']}")

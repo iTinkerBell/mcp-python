@@ -21,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 import anyio
 import asyncssh
@@ -65,7 +65,7 @@ async def ssh_server(host: str = '0.0.0.0',
                 print(f"Ed25519 key pair generated and saved to: {default_private_key_path}")
 
             except Exception as e:
-                print(f"Error generating Ed25519 key: {e}")
+                logger.error(f"Error generating Ed25519 key: {e}")
         server_host_keys = [str(default_private_key_path)]
 
     if not authorized_client_keys:
@@ -82,18 +82,18 @@ async def ssh_server(host: str = '0.0.0.0',
     write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
 
     # Track active connections and channels
-    active_sessions = []
+    active_sessions: List["SSHSessionHandler"] = []
 
     class SSHServerHandler(asyncssh.SSHServer):
         def connection_made(self, conn: asyncssh.SSHServerConnection):
             """Called when a connection is established"""
-            logger.info(f"SSH connection established from {conn.get_extra_info('peername')[0]}")
+            print(f"SSH connection established from {conn.get_extra_info('peername')[0]}")
 
         def connection_lost(self, exc: Optional[BaseException]):
             """Called when a connection is closed"""
             if exc:
                 logger.error(f"SSH connection error: {str(exc)}")
-            logger.info("SSH connection closed")
+            print("SSH connection closed")
 
         def session_requested(self):
             """Handle a new session request"""
@@ -106,16 +106,19 @@ async def ssh_server(host: str = '0.0.0.0',
             self._pending_lines = []
             self._line_available = asyncio.Event()
             active_sessions.append(self)
+            print(f"New SSH session created: {len(active_sessions)} active sessions")
 
         def connection_made(self, chan: asyncssh.SSHServerChannel[str]):
             """Called when a connection is made"""
             self._chan = chan
             remote_addr = self._chan.get_extra_info('peername')[0]
-            logger.info(f"Connection made from {remote_addr}")
+            print(f"Connection made from {remote_addr}")
+            for session in active_sessions:
+                print(f"Active session channel: {session._chan}")
 
         def shell_requested(self) -> bool:
             """Handle shell requests"""
-            logger.info("Shell requested")
+            print("Shell requested")
             return True
 
         def session_started(self):
@@ -125,7 +128,7 @@ async def ssh_server(host: str = '0.0.0.0',
                 return
 
             remote_addr = self._chan.get_extra_info('peername')[0]
-            logger.info(f"SSH session started from {remote_addr}")
+            print(f"SSH session started from {remote_addr}")
 
             # Start processing the connection
             asyncio.create_task(self.process_session())
@@ -169,7 +172,10 @@ async def ssh_server(host: str = '0.0.0.0',
             """Called when the connection is lost"""
             if exc:
                 logger.error(f"SSH session error: {exc}")
-            logger.info("SSH session closed")
+            print("SSH session closed")
+
+            if self._chan is not None:
+                self._chan.close()
 
             # Remove from active sessions
             if self in active_sessions:
@@ -185,7 +191,7 @@ async def ssh_server(host: str = '0.0.0.0',
                 return
 
             remote_addr = self._chan.get_extra_info('peername')[0]
-            logger.info(f"Processing session from: {remote_addr}")
+            print(f"Processing session from: {remote_addr}")
 
             try:
                 async def ssh_reader():
@@ -213,10 +219,14 @@ async def ssh_server(host: str = '0.0.0.0',
                     """Write JSON-RPC messages to the SSH connection"""
                     try:
                         async for message in write_stream_reader:
+                            # Check if the channel is still open before writing
+                            if self._chan is None or self._chan.is_closing():
+                                logger.warning("Cannot send message: SSH channel is closed")
+                                continue
+
                             json = message.model_dump_json(by_alias=True, exclude_none=True)
                             print(f"Sending message: {json}")
                             self._chan.write(json + '\n')
-                            # await self._chan.drain()
                     except asyncio.CancelledError:
                         logger.debug("SSH writer task cancelled")
                     except Exception as e:
@@ -246,7 +256,7 @@ async def ssh_server(host: str = '0.0.0.0',
                 authorized_client_keys=authorized_client_keys
             )
 
-            logger.info(f"SSH server listening on {host}:{port}")
+            print(f"SSH server listening on {host}:{port}")
 
             async with server:
                 # Keep the server running until shutdown
@@ -264,10 +274,10 @@ async def ssh_server(host: str = '0.0.0.0',
             # Signal shutdown
             shutdown_event.set()
 
-            # Clean up active sessions
-            for session in active_sessions[:]:
-                if session._chan:
-                    session._chan.close()
+            # # Clean up active sessions
+            # for session in active_sessions[:]:
+            #     if session._chan:
+            #         session._chan.close()
 
             # Cancel the server task group
             server_tg.cancel_scope.cancel()
