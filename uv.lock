@@ -8,6 +8,8 @@ resolution-mode = "lowest-direct"
 [manifest]
 members = [
     "mcp",
+    "mcp-server-ssh-client",
+    "mcp-server-ssh-server",
     "mcp-simple-prompt",
     "mcp-simple-resource",
     "mcp-simple-ssh-tool",
@@ -40,15 +42,15 @@ wheels = [
 
 [[package]]
 name = "asyncssh"
-version = "2.13.2"
+version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/01/3ec7ff6eafc0512a927ca2e047f0abd1636602b73ede09d4a7f41063db99/asyncssh-2.13.2.tar.gz", hash = "sha256:991e531c4bb7dbec62b754878d96a3246338aac11a28ce3c3e99018fb2f5828c", size = 498674 }
+sdist = { url = "https://files.pythonhosted.org/packages/43/f5/365489721f98bb1cd5e3d48f397598e1be5b2695301e2d685b64cfdab51d/asyncssh-2.20.0.tar.gz", hash = "sha256:020b6e384b2328ef8683908ad8e73de9ec2b9b62fd964571ea957bba98412983", size = 534719 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/82/df5365b647cabf9f0f77135b7d7e845c14c6016f8f320b2a172ffe7e9af3/asyncssh-2.13.2-py3-none-any.whl", hash = "sha256:c7dfe9085c0659acb2ef0d177fb12421e92a20d52b98ab83eed4a5916a1d60cc", size = 349278 },
+    { url = "https://files.pythonhosted.org/packages/f2/c5/7a9d42c065f272f74792663194966a68810e851a34c0dd080246bd7308f5/asyncssh-2.20.0-py3-none-any.whl", hash = "sha256:af6888d937c07a4bf31293335a6166b4d87608cdb5957b49547da6ad87ecf174", size = 373109 },
 ]
 
 [[package]]
@@ -619,6 +621,68 @@ docs = [
     { name = "mkdocs-glightbox", specifier = ">=0.4.0" },
     { name = "mkdocs-material", extras = ["imaging"], specifier = ">=9.5.45" },
     { name = "mkdocstrings-python", specifier = ">=1.12.2" },
+]
+
+[[package]]
+name = "mcp-server-ssh-client"
+version = "0.1.0"
+source = { editable = "src/client" }
+dependencies = [
+    { name = "anyio" },
+    { name = "asyncssh" },
+    { name = "mcp" },
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyright" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.5" },
+    { name = "asyncssh", specifier = ">=2.20.0" },
+    { name = "mcp", editable = "." },
+    { name = "pydantic", specifier = ">=2.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyright", specifier = ">=1.1.389" },
+    { name = "ruff", specifier = ">=0.7.3" },
+]
+
+[[package]]
+name = "mcp-server-ssh-server"
+version = "0.1.0"
+source = { editable = "src/server" }
+dependencies = [
+    { name = "anyio" },
+    { name = "asyncssh" },
+    { name = "mcp" },
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyright" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.5" },
+    { name = "asyncssh", specifier = ">=2.20.0" },
+    { name = "mcp", editable = "." },
+    { name = "pydantic", specifier = ">=2.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyright", specifier = ">=1.1.389" },
+    { name = "ruff", specifier = ">=0.7.3" },
 ]
 
 [[package]]

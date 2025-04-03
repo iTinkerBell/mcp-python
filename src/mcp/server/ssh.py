@@ -21,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import Mapping, Optional, List, Tuple
 
 import anyio
 import asyncssh
@@ -120,6 +120,13 @@ async def ssh_server(host: str = '0.0.0.0',
             """Handle shell requests"""
             print("Shell requested")
             return True
+
+        def pty_requested(self, term_type: str,
+                      term_size: Tuple[int, int, int, int],
+                      term_modes: Mapping[int, int]) -> bool:
+            """Handle pseudo-terminal requests"""
+            print("Pseudo-terminal requested")
+            return False
 
         def session_started(self):
             """Called when the session starts"""
